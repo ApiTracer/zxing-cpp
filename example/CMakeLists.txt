@@ -15,10 +15,6 @@ if (BUILD_WRITERS)
     target_link_libraries (ZXingWriter ZXing::ZXing stb::stb)
     set_target_properties(ZXingWriter PROPERTIES
         MACOSX_BUNDLE_GUI_IDENTIFIER ZXingWriter
-        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-        MACOSX_BUNDLE TRUE
-        WIN32_EXECUTABLE TRUE
     )
 
     add_test(NAME ZXingWriterTest COMMAND ZXingWriter qrcode "I have the best words." test.png)
@@ -32,10 +28,6 @@ if (BUILD_READERS)
     target_link_libraries (ZXingReader ZXing::ZXing stb::stb)
     set_target_properties(ZXingReader PROPERTIES
         MACOSX_BUNDLE_GUI_IDENTIFIER ZXingReader
-        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-        MACOSX_BUNDLE TRUE
-        WIN32_EXECUTABLE TRUE
     )
 
     add_test(NAME ZXingReaderTest COMMAND ZXingReader -fast -format qrcode test.png) # see above
@@ -63,10 +55,7 @@ if (BUILD_READERS)
         )
         set_target_properties(ZXingQtCamReader PROPERTIES
             MACOSX_BUNDLE_GUI_IDENTIFIER ZXingQtCamReader
-            MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-            MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-            MACOSX_BUNDLE TRUE
-            WIN32_EXECUTABLE TRUE
+            MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/ios/Info.plist"
         )
         target_compile_definitions(ZXingQtCamReader
             PRIVATE $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:QT_QML_DEBUG>)
@@ -81,8 +70,4 @@ if (BUILD_READERS)
 #        target_include_directories (ZXingOpenCV PRIVATE ${OpenCV_INCLUDE_DIRS})
 #        target_link_libraries (ZXingOpenCV ZXing::ZXing ${OpenCV_LIBS})
 #    endif()
-endif()
-
-if (ANDROID)
-    include(/Users/leo/Library/Android/sdk/android_openssl/CMakeLists.txt)
 endif()

@@ -29,7 +29,7 @@ Window {
         id: barcodeReader
         videoSink: videoOutput.videoSink
 
-        formats: (oneDSwitch.checked ? (ZXing.OneDCodes) : ZXing.None) | (twoDSwitch.checked ? (ZXing.TwoDCodes) : ZXing.None)
+        formats: ZXing.Code128 //(oneDSwitch.checked ? (ZXing.OneDCodes) : ZXing.None) | (twoDSwitch.checked ? (ZXing.TwoDCodes) : ZXing.None)
         tryRotate: tryRotateSwitch.checked
         tryHarder: tryHarderSwitch.checked
         tryDownscale: tryDownscaleSwitch.checked
@@ -59,6 +59,7 @@ Window {
 
     Camera {
         id: camera
+        Component.onCompleted: active = true
         cameraDevice: devices.videoInputs[camerasComboBox.currentIndex] ? devices.videoInputs[camerasComboBox.currentIndex] : devices.defaultVideoInput
         focusMode: Camera.FocusModeAutoNear
         onErrorOccurred: console.log("camera error:" + errorString)
@@ -141,7 +142,7 @@ Window {
                 Switch {id: tryHarderSwitch; text: qsTr("Try Harder"); checked: true }
                 Switch {id: tryDownscaleSwitch; text: qsTr("Try Downscale"); checked: true }
                 Switch {id: oneDSwitch; text: qsTr("1D Codes"); checked: true }
-                Switch {id: twoDSwitch; text: qsTr("2D Codes"); checked: true }
+                Switch {id: twoDSwitch; text: qsTr("2D Codes"); checked: false } // 1 to 2s to decode a frame on IOS
             }
         }
     }
