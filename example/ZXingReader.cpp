@@ -4,6 +4,8 @@
 */
 // SPDX-License-Identifier: Apache-2.0
 
+#define ZX_USE_UTF8 1 // see Result.h
+
 #include "ReadBarcode.h"
 #include "TextUtfEncoding.h"
 #include "GTIN.h"
@@ -23,7 +25,6 @@
 #include <stb_image_write.h>
 
 using namespace ZXing;
-using namespace TextUtfEncoding;
 
 static void PrintUsage(const char* exePath)
 {
@@ -111,6 +112,11 @@ void drawRect(const ImageView& image, const Position& pos)
 		drawLine(image, pos[i], pos[(i + 1) % 4]);
 }
 
+std::string escapeNonGraphical(const std::string& str)
+{
+	return TextUtfEncoding::ToUtf8(TextUtfEncoding::FromUtf8(str), true);
+}
+
 int main(int argc, char* argv[])
 {
 	DecodeHints hints;
@@ -129,9 +135,6 @@ int main(int argc, char* argv[])
 	}
 
 	hints.setEanAddOnSymbol(EanAddOnSymbol::Read);
-
-	if (oneLine)
-		angleEscape = true;
 
 	if (angleEscape)
 		std::setlocale(LC_CTYPE, "en_US.UTF-8"); // Needed so `std::iswgraph()` in `ToUtf8(angleEscape)` does not 'swallow' all printable non-ascii utf8 chars
@@ -175,7 +178,7 @@ int main(int argc, char* argv[])
 			if (oneLine) {
 				std::cout << filePath << " " << ToString(result.format());
 				if (result.isValid())
-					std::cout << " \"" << ToUtf8(result.text(), angleEscape) << "\"";
+					std::cout << " \"" << escapeNonGraphical(result.text()) << "\"";
 				else if (result.format() != BarcodeFormat::None)
 					std::cout << " " << ToString(result.status());
 				std::cout << "\n";
@@ -190,10 +193,10 @@ int main(int argc, char* argv[])
 					std::cout << "File:       " << filePath << "\n";
 				firstFile = false;
 			}
-			std::cout << "Text:       \"" << ToUtf8(result.text(), angleEscape) << "\"\n"
-					  << "Bytes:      \"" << ToHex(result.bytes()) << "\"\n"
-					  << "TextECI:    \"" << result.utf8Protocol() << "\"\n"
-					  << "BytesECI:   \"" << ToHex(result.bytesECI()) << "\"\n"
+			std::cout << "Text:       \"" << (angleEscape ? escapeNonGraphical(result.text()) : result.text()) << "\"\n"
+					  << "TextECI:    \"" << result.utf8ECI() << "\"\n"
+					  << "Bytes:      " << ToHex(result.bytes()) << "\n"
+					  << "BytesECI:   " << ToHex(result.bytesECI()) << "\n"
 					  << "Format:     " << ToString(result.format()) << "\n"
 					  << "Identifier: " << result.symbologyIdentifier() << "\n"
 					  << "Content:    " << ToString(result.contentType()) << "\n"
@@ -208,19 +211,19 @@ int main(int argc, char* argv[])
 					std::cout << key << v << "\n";
 			};
 
-			printOptional("EC Level:   ", ToUtf8(result.ecLevel()));
+			printOptional("EC Level:   ", result.ecLevel());
 
 			if (result.lineCount())
 				std::cout << "Lines:      " << result.lineCount() << "\n";
 
 			if ((BarcodeFormat::EAN13 | BarcodeFormat::EAN8 | BarcodeFormat::UPCA | BarcodeFormat::UPCE)
 					.testFlag(result.format())) {
-				printOptional("Country:    ", GTIN::LookupCountryIdentifier(ToUtf8(result.text()), result.format()));
+				printOptional("Country:    ", GTIN::LookupCountryIdentifier(result.text(), result.format()));
 				printOptional("Add-On:     ", GTIN::EanAddOn(result));
 				printOptional("Price:      ", GTIN::Price(GTIN::EanAddOn(result)));
 				printOptional("Issue #:    ", GTIN::IssueNr(GTIN::EanAddOn(result)));
-			} else if (result.format() == BarcodeFormat::ITF && result.text().length() == 14) {
-				printOptional("Country:    ", GTIN::LookupCountryIdentifier(ToUtf8(result.text()), result.format()));
+			} else if (result.format() == BarcodeFormat::ITF && Size(result.bytes()) == 14) {
+				printOptional("Country:    ", GTIN::LookupCountryIdentifier(result.text(), result.format()));
 			}
 
 			if (result.isPartOfSequence())
