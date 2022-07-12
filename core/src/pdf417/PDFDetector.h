@@ -17,7 +17,6 @@ namespace ZXing {
 
 class BitMatrix;
 class BinaryBitmap;
-enum class DecodeStatus;
 
 namespace Pdf417 {
 
@@ -36,9 +35,10 @@ public:
 	{
 		std::shared_ptr<const BitMatrix> bits;
 		std::list<std::array<Nullable<ResultPoint>, 8>> points;
+		int rotation;
 	};
 
-	static DecodeStatus Detect(const BinaryBitmap& image, bool multiple, Result& result);
+	static Result Detect(const BinaryBitmap& image, bool multiple, bool tryRotate);
 };
 
 } // Pdf417

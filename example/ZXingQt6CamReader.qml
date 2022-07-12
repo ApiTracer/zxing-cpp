@@ -29,7 +29,7 @@ Window {
         id: barcodeReader
         videoSink: videoOutput.videoSink
 
-        formats: ZXing.Code128 //(oneDSwitch.checked ? (ZXing.OneDCodes) : ZXing.None) | (twoDSwitch.checked ? (ZXing.TwoDCodes) : ZXing.None)
+        formats: ZXing.Code128 //(linearSwitch.checked ? (ZXing.LinearCodes) : ZXing.None) | (matrixSwitch.checked ? (ZXing.MatrixCodes) : ZXing.None)
         tryRotate: tryRotateSwitch.checked
         tryHarder: tryHarderSwitch.checked
         tryDownscale: tryDownscaleSwitch.checked
@@ -141,8 +141,8 @@ Window {
                 Switch {id: tryRotateSwitch; text: qsTr("Try Rotate"); checked: true }
                 Switch {id: tryHarderSwitch; text: qsTr("Try Harder"); checked: true }
                 Switch {id: tryDownscaleSwitch; text: qsTr("Try Downscale"); checked: true }
-                Switch {id: oneDSwitch; text: qsTr("1D Codes"); checked: true }
-                Switch {id: twoDSwitch; text: qsTr("2D Codes"); checked: false } // 1 to 2s to decode a frame on IOS
+                Switch {id: linearSwitch; text: qsTr("Linear Codes"); checked: true }
+                Switch {id: matrixSwitch; text: qsTr("Matrix Codes"); checked: true }
             }
         }
     }
