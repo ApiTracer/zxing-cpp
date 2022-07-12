@@ -47,7 +47,7 @@ if (BUILD_READERS)
 #    endif()
 
     if (TARGET Qt::Multimedia AND TARGET Qt::Quick)
-        qt_add_executable(ZXingQtCamReader ZXingQtCamReader.cpp ZXingQtReader.h)
+        qt_add_executable(ZXingQtCamReader ZXingQtCamReader.cpp ZXingQtReader.h ZXingWriter.cpp)
         qt_add_qml_module(ZXingQtCamReader
             URI ZXingQtCamReader
             VERSION 1.0
