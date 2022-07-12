@@ -9,7 +9,6 @@
 #include "BitMatrix.h"
 #include "BitSource.h"
 #include "CharacterSet.h"
-#include "DecodeStatus.h"
 #include "DecoderResult.h"
 #include "GenericGF.h"
 #include "QRBitMatrixParser.h"
@@ -20,7 +19,7 @@
 #include "ReedSolomonDecoder.h"
 #include "StructuredAppend.h"
 #include "TextDecoder.h"
-#include "ZXContainerAlgorithms.h"
+#include "ZXAlgorithms.h"
 #include "ZXTestSupport.h"
 
 #include <algorithm>
@@ -36,7 +35,7 @@ namespace ZXing::QRCode {
 *
 * @param codewordBytes data and error correction codewords
 * @param numDataCodewords number of codewords that are data bytes
-* @throws ChecksumException if error correction fails
+* @return false if error correction fails
 */
 static bool CorrectErrors(ByteArray& codewordBytes, int numDataCodewords)
 {
@@ -75,8 +74,8 @@ static void DecodeHanziSegment(BitSource& bits, int count, Content& result)
 			// In the 0xB0A1 to 0xFAFE range
 			assembledTwoBytes += 0x0A6A1;
 		}
-		result += static_cast<uint8_t>((assembledTwoBytes >> 8) & 0xFF);
-		result += static_cast<uint8_t>(assembledTwoBytes & 0xFF);
+		result += narrow_cast<uint8_t>((assembledTwoBytes >> 8) & 0xFF);
+		result += narrow_cast<uint8_t>(assembledTwoBytes & 0xFF);
 		count--;
 	}
 }
@@ -99,8 +98,8 @@ static void DecodeKanjiSegment(BitSource& bits, int count, Content& result)
 			// In the 0xE040 to 0xEBBF range
 			assembledTwoBytes += 0x0C140;
 		}
-		result += static_cast<uint8_t>(assembledTwoBytes >> 8);
-		result += static_cast<uint8_t>(assembledTwoBytes);
+		result += narrow_cast<uint8_t>(assembledTwoBytes >> 8);
+		result += narrow_cast<uint8_t>(assembledTwoBytes);
 		count--;
 	}
 }
@@ -111,7 +110,7 @@ static void DecodeByteSegment(BitSource& bits, int count, Content& result)
 	result.reserve(count);
 
 	for (int i = 0; i < count; i++)
-		result += static_cast<uint8_t>(bits.readBits(8));
+		result += narrow_cast<uint8_t>(bits.readBits(8));
 }
 
 static char ToAlphaNumericChar(int value)
@@ -147,7 +146,7 @@ static void DecodeAlphanumericSegment(BitSource& bits, int count, Content& resul
 		buffer += ToAlphaNumericChar(bits.readBits(6));
 	}
 	// See section 6.4.8.1, 6.4.8.2
-	if (!result.applicationIndicator.empty()) {
+	if (result.symbology.aiFlag != AIFlag::None) {
 		// We need to massage the result a bit if in an FNC1 mode:
 		for (size_t i = 0; i < buffer.length(); i++) {
 			if (buffer[i] == '%') {
@@ -176,7 +175,7 @@ static void DecodeNumericSegment(BitSource& bits, int count, Content& result)
 		// Each 10 bits encodes three digits
 		int threeDigitsBits = bits.readBits(10);
 		if (threeDigitsBits >= 1000)
-			throw std::runtime_error("Invalid value in numeric segment");
+			throw FormatError("Invalid value in numeric segment");
 
 		result += ToAlphaNumericChar(threeDigitsBits / 100);
 		result += ToAlphaNumericChar((threeDigitsBits / 10) % 10);
@@ -188,7 +187,7 @@ static void DecodeNumericSegment(BitSource& bits, int count, Content& result)
 		// Two digits left over to read, encoded in 7 bits
 		int twoDigitsBits = bits.readBits(7);
 		if (twoDigitsBits >= 100)
-			throw std::runtime_error("Invalid value in numeric segment");
+			throw FormatError("Invalid value in numeric segment");
 
 		result += ToAlphaNumericChar(twoDigitsBits / 10);
 		result += ToAlphaNumericChar(twoDigitsBits % 10);
@@ -196,7 +195,7 @@ static void DecodeNumericSegment(BitSource& bits, int count, Content& result)
 		// One digit left over to read
 		int digitBits = bits.readBits(4);
 		if (digitBits >= 10)
-			throw std::runtime_error("Invalid value in numeric segment");
+			throw FormatError("Invalid value in numeric segment");
 
 		result += ToAlphaNumericChar(digitBits);
 	}
@@ -219,7 +218,7 @@ static ECI ParseECIValue(BitSource& bits)
 		int secondThirdBytes = bits.readBits(16);
 		return ECI(((firstByte & 0x1F) << 16) | secondThirdBytes);
 	}
-	throw std::runtime_error("ParseECIValue: invalid value");
+	throw FormatError("ParseECIValue: invalid value");
 }
 
 /**
@@ -253,13 +252,12 @@ bool IsEndOfStream(const BitSource& bits, const Version& version)
 * <p>See ISO 18004:2006, 6.4.3 - 6.4.7</p>
 */
 ZXING_EXPORT_TEST_ONLY
-DecoderResult DecodeBitStream(ByteArray&& bytes, const Version& version, ErrorCorrectionLevel ecLevel,
-							  const std::string& hintedCharset)
+DecoderResult DecodeBitStream(ByteArray&& bytes, const Version& version, ErrorCorrectionLevel ecLevel)
 {
 	BitSource bits(bytes);
 	Content result;
+	Error error;
 	result.symbology = {'Q', '1', 1};
-	result.hintedCharset = hintedCharset.empty() ? "Auto" : hintedCharset;
 	StructuredAppendInfo structuredAppend;
 	const int modeBitLength = CodecModeBitsLength(version);
 
@@ -275,13 +273,13 @@ DecoderResult DecodeBitStream(ByteArray&& bytes, const Version& version, ErrorCo
 			switch (mode) {
 			case CodecMode::FNC1_FIRST_POSITION:
 //				if (!result.empty()) // uncomment to enforce specification
-//					throw std::runtime_error("GS1 Indicator (FNC1 in first position) at illegal position");
+//					throw FormatError("GS1 Indicator (FNC1 in first position) at illegal position");
 				result.symbology.modifier = '3';
-				result.applicationIndicator = "GS1"; // In Alphanumeric mode undouble doubled percents and treat single percent as <GS>
+				result.symbology.aiFlag = AIFlag::GS1; // In Alphanumeric mode undouble doubled '%' and treat single '%' as <GS>
 				break;
 			case CodecMode::FNC1_SECOND_POSITION:
 				if (!result.empty())
-					throw std::runtime_error("AIM Application Indicator (FNC1 in second position) at illegal position");
+					throw FormatError("AIM Application Indicator (FNC1 in second position) at illegal position");
 				result.symbology.modifier = '5'; // As above
 				// ISO/IEC 18004:2015 7.4.8.3 AIM Application Indicator (FNC1 in second position), "00-99" or "A-Za-z"
 				if (int appInd = bits.readBits(8); appInd < 10) // "00-09"
@@ -289,10 +287,10 @@ DecoderResult DecodeBitStream(ByteArray&& bytes, const Version& version, ErrorCo
 				else if (appInd < 100) // "10-99"
 					result += std::to_string(appInd);
 				else if ((appInd >= 165 && appInd <= 190) || (appInd >= 197 && appInd <= 222)) // "A-Za-z"
-					result += static_cast<uint8_t>(appInd - 100);
+					result += narrow_cast<uint8_t>(appInd - 100);
 				else
-					throw std::runtime_error("Invalid AIM Application Indicator");
-				result.applicationIndicator = result.bytes.asString(); // see also above
+					throw FormatError("Invalid AIM Application Indicator");
+				result.symbology.aiFlag = AIFlag::AIM; // see also above
 				break;
 			case CodecMode::STRUCTURED_APPEND:
 				// sequence number and parity is added later to the result metadata
@@ -309,7 +307,7 @@ DecoderResult DecodeBitStream(ByteArray&& bytes, const Version& version, ErrorCo
 				// First handle Hanzi mode which does not start with character count
 				// chinese mode contains a sub set indicator right after mode indicator
 				if (int subset = bits.readBits(4); subset != 1) // GB2312_SUBSET is the only supported one right now
-					return DecodeStatus::FormatError;
+					throw FormatError("Unsupported HANZI subset");
 				int count = bits.readBits(CharacterCountBits(mode, version));
 				DecodeHanziSegment(bits, count, result);
 				break;
@@ -323,41 +321,42 @@ DecoderResult DecodeBitStream(ByteArray&& bytes, const Version& version, ErrorCo
 				case CodecMode::ALPHANUMERIC: DecodeAlphanumericSegment(bits, count, result); break;
 				case CodecMode::BYTE:         DecodeByteSegment(bits, count, result); break;
 				case CodecMode::KANJI:        DecodeKanjiSegment(bits, count, result); break;
-				default:                      return DecodeStatus::FormatError;
+				default:                      throw FormatError("Invalid CodecMode");
 				}
 				break;
 			}
 			}
 		}
-	}
-	catch (const std::exception& e)
-	{
-#ifndef NDEBUG
-		printf("QRDecoder error: %s\n", e.what());
-#endif
-		return DecodeStatus::FormatError;
+	} catch (Error e) {
+		error = std::move(e);
 	}
 
-	return DecoderResult(std::move(bytes), std::move(result))
+	return DecoderResult(std::move(result))
+		.setError(std::move(error))
 		.setEcLevel(ToString(ecLevel))
 		.setStructuredAppend(structuredAppend);
 }
 
-static DecoderResult DoDecode(const BitMatrix& bits, const Version& version, const std::string& hintedCharset)
+DecoderResult Decode(const BitMatrix& bits)
 {
+	const Version* pversion = ReadVersion(bits);
+	if (!pversion)
+		return FormatError("Invalid version");
+	const Version& version = *pversion;
+
 	auto formatInfo = ReadFormatInformation(bits, version.isMicroQRCode());
 	if (!formatInfo.isValid())
-		return DecodeStatus::FormatError;
+		return FormatError("Invalid format informatino");
 
 	// Read codewords
 	ByteArray codewords = ReadCodewords(bits, version, formatInfo);
 	if (codewords.empty())
-		return DecodeStatus::FormatError;
+		return FormatError("Failed to read codewords");
 
 	// Separate into data blocks
 	std::vector<DataBlock> dataBlocks = DataBlock::GetDataBlocks(codewords, version, formatInfo.ecLevel);
 	if (dataBlocks.empty())
-		return DecodeStatus::FormatError;
+		return FormatError("Failed to get data blocks");
 
 	// Count total number of data bytes
 	const auto op = [](auto totalBytes, const auto& dataBlock){ return totalBytes + dataBlock.numDataCodewords();};
@@ -372,22 +371,13 @@ static DecoderResult DoDecode(const BitMatrix& bits, const Version& version, con
 		int numDataCodewords = dataBlock.numDataCodewords();
 
 		if (!CorrectErrors(codewordBytes, numDataCodewords))
-			return DecodeStatus::ChecksumError;
+			return ChecksumError();
 
 		resultIterator = std::copy_n(codewordBytes.begin(), numDataCodewords, resultIterator);
 	}
 
 	// Decode the contents of that stream of bytes
-	return DecodeBitStream(std::move(resultBytes), version, formatInfo.ecLevel, hintedCharset).setIsMirrored(formatInfo.isMirrored);
-}
-
-DecoderResult Decode(const BitMatrix& bits, const std::string& hintedCharset)
-{
-	const Version* version = ReadVersion(bits);
-	if (!version)
-		return DecodeStatus::FormatError;
-
-	return DoDecode(bits, *version, hintedCharset);
+	return DecodeBitStream(std::move(resultBytes), version, formatInfo.ecLevel).setIsMirrored(formatInfo.isMirrored);
 }
 
 } // namespace ZXing::QRCode

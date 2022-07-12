@@ -9,6 +9,7 @@
 #include "DecoderResult.h"
 #include "TextDecoder.h"
 #include "TextUtfEncoding.h"
+#include "ZXAlgorithms.h"
 
 #include <cmath>
 #include <list>
@@ -17,30 +18,25 @@
 
 namespace ZXing {
 
-Result::Result(const std::string& text, int y, int xStart, int xStop, BarcodeFormat format,
-			   SymbologyIdentifier si, ByteArray&& rawBytes, const bool readerInit)
-	:
-	  _format(format),
-	  _content({ByteArray(text)}, si),
+Result::Result(const std::string& text, int y, int xStart, int xStop, BarcodeFormat format, SymbologyIdentifier si, Error error, bool readerInit)
+	: _content({ByteArray(text)}, si),
+	  _error(error),
 	  _position(Line(y, xStart, xStop)),
-	  _rawBytes(std::move(rawBytes)),
-	  _numBits(Size(_rawBytes) * 8),
-	  _readerInit(readerInit),
-	  _lineCount(0)
+	  _format(format),
+	  _lineCount(0),
+	  _readerInit(readerInit)
 {}
 
 Result::Result(DecoderResult&& decodeResult, Position&& position, BarcodeFormat format)
-	: _status(decodeResult.errorCode()),
-	  _format(format),
-	  _content(std::move(decodeResult).content()),
+	: _content(std::move(decodeResult).content()),
+	  _error(std::move(decodeResult).error()),
 	  _position(std::move(position)),
-	  _rawBytes(std::move(decodeResult).rawBytes()),
-	  _numBits(decodeResult.numBits()),
 	  _ecLevel(decodeResult.ecLevel()),
 	  _sai(decodeResult.structuredAppend()),
+	  _format(decodeResult.content().symbology.code == 0 ? BarcodeFormat::None : format),
+	  _lineCount(decodeResult.lineCount()),
 	  _isMirrored(decodeResult.isMirrored()),
-	  _readerInit(decodeResult.readerInit()),
-	  _lineCount(decodeResult.lineCount())
+	  _readerInit(decodeResult.readerInit())
 {
 	// TODO: add type opaque and code specific 'extra data'? (see DecoderResult::extra())
 }
@@ -65,10 +61,12 @@ std::wstring Result::utf16() const
 	return _content.utf16();
 }
 
+#if 0
 std::string Result::utf8ECI() const
 {
-	return _content.utf8ECI();
+	return _content.text(TextMode::Utf8ECI);
 }
+#endif
 
 ContentType Result::contentType() const
 {
@@ -83,7 +81,7 @@ bool Result::hasECI() const
 int Result::orientation() const
 {
 	constexpr auto std_numbers_pi_v = 3.14159265358979323846; // TODO: c++20 <numbers>
-	return std::lround(_position.orientation() * 180 / std_numbers_pi_v);
+	return narrow_cast<int>(std::lround(_position.orientation() * 180 / std_numbers_pi_v));
 }
 
 std::string Result::symbologyIdentifier() const
@@ -106,13 +104,24 @@ std::string Result::sequenceId() const
 	return _sai.id;
 }
 
+Result& Result::setCharacterSet(CharacterSet defaultCS)
+{
+	if (defaultCS != CharacterSet::Unknown)
+		_content.defaultCharset = defaultCS;
+	return *this;
+}
+
 bool Result::operator==(const Result& o) const
 {
-	if (format() != o.format() || bytes() != o.bytes())
+	// two symbols may be considered the same if at least one of them has an error
+	if (!(format() == o.format() && (bytes() == o.bytes() || error() || o.error())))
 		return false;
 
-	if (BarcodeFormats(BarcodeFormat::TwoDCodes).testFlag(format()))
+	if (BarcodeFormats(BarcodeFormat::MatrixCodes).testFlag(format()))
 		return IsInside(Center(o.position()), position());
+
+	// linear symbology comparisons only implemented for this->lineCount == 1
+	assert(lineCount() == 1);
 
 	// if one line is less than half the length of the other away from the
 	// latter, we consider it to belong to the same symbol
@@ -126,15 +135,10 @@ bool Result::operator==(const Result& o) const
 Result MergeStructuredAppendSequence(const Results& results)
 {
 	if (results.empty())
-		return Result(DecodeStatus::NotFound);
+		return {};
 
 	std::list<Result> allResults(results.begin(), results.end());
 	allResults.sort([](const Result& r1, const Result& r2) { return r1.sequenceIndex() < r2.sequenceIndex(); });
-
-	if (allResults.back().sequenceSize() != Size(allResults) ||
-		!std::all_of(allResults.begin(), allResults.end(),
-					 [&](Result& it) { return it.sequenceId() == allResults.front().sequenceId(); }))
-		return Result(DecodeStatus::FormatError);
 
 	Result res = allResults.front();
 	for (auto i = std::next(allResults.begin()); i != allResults.end(); ++i)
@@ -142,6 +146,11 @@ Result MergeStructuredAppendSequence(const Results& results)
 
 	res._position = {};
 	res._sai.index = -1;
+
+	if (allResults.back().sequenceSize() != Size(allResults) ||
+		!std::all_of(allResults.begin(), allResults.end(),
+					 [&](Result& it) { return it.sequenceId() == allResults.front().sequenceId(); }))
+		res._error = FormatError("sequenceIDs not matching during structured append sequence merging");
 
 	return res;
 }

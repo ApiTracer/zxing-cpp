@@ -12,12 +12,11 @@
 #include "DMBitLayout.h"
 #include "DMDataBlock.h"
 #include "DMVersion.h"
-#include "DecodeStatus.h"
 #include "DecoderResult.h"
 #include "GenericGF.h"
 #include "ReedSolomonDecoder.h"
 #include "TextDecoder.h"
-#include "ZXContainerAlgorithms.h"
+#include "ZXAlgorithms.h"
 #include "ZXTestSupport.h"
 
 #include <algorithm>
@@ -161,7 +160,7 @@ static void DecodeC40OrTextSegment(BitSource& bits, Content& result, Mode mode)
 				else if (cValue < 40) // Size(BASIC_SET_CHARS)
 					result.push_back(upperShift(BASIC_SET_CHARS[cValue]));
 				else
-					throw std::runtime_error("invalid value in C40 or Text segment");
+					throw FormatError("invalid value in C40 or Text segment");
 				break;
 			case 1: result.push_back(upperShift(cValue)); break;
 			case 2:
@@ -170,7 +169,7 @@ static void DecodeC40OrTextSegment(BitSource& bits, Content& result, Mode mode)
 				else if (cValue == 30) // Upper Shift
 					upperShift.set = true;
 				else
-					throw std::runtime_error("invalid value in C40 or Text segment");
+					throw FormatError("invalid value in C40 or Text segment");
 				break;
 			case 3:
 				if (mode == Mode::C40)
@@ -178,9 +177,9 @@ static void DecodeC40OrTextSegment(BitSource& bits, Content& result, Mode mode)
 				else if (cValue < Size(TEXT_SHIFT3_SET_CHARS))
 					result.push_back(upperShift(TEXT_SHIFT3_SET_CHARS[cValue]));
 				else
-					throw std::runtime_error("invalid value in C40 or Text segment");
+					throw FormatError("invalid value in C40 or Text segment");
 				break;
-			default: throw std::runtime_error("invalid value in C40 or Text segment"); ;
+			default: throw FormatError("invalid value in C40 or Text segment"); ;
 			}
 		}
 	}
@@ -196,7 +195,7 @@ static void DecodeAnsiX12Segment(BitSource& bits, Content& result)
 			// X12 segment terminator <CR>, separator *, sub-element separator >, space
 			static const char segChars[4] = {'\r', '*', '>', ' '};
 			if (cValue < 0)
-				throw std::runtime_error("invalid value in AnsiX12 segment");
+				throw FormatError("invalid value in AnsiX12 segment");
 			else if (cValue < 4)
 				result.push_back(segChars[cValue]);
 			else if (cValue < 14) // 0 - 9
@@ -204,7 +203,7 @@ static void DecodeAnsiX12Segment(BitSource& bits, Content& result)
 			else if (cValue < 40) // A - Z
 				result.push_back((char)(cValue + 51));
 			else
-				throw std::runtime_error("invalid value in AnsiX12 segment");
+				throw FormatError("invalid value in AnsiX12 segment");
 		}
 	}
 }
@@ -262,23 +261,23 @@ static void DecodeBase256Segment(BitSource& bits, Content& result)
 
 	// We're seeing NegativeArraySizeException errors from users.
 	if (count < 0)
-		throw std::runtime_error("invalid count in Base256 segment");
+		throw FormatError("invalid count in Base256 segment");
 
 	result.reserve(count);
 	for (int i = 0; i < count; i++) {
 		// readBits(8) may fail, have seen this particular error in the wild, such as at
 		// http://www.bcgen.com/demo/IDAutomationStreamingDataMatrix.aspx?MODE=3&D=Fred&PFMT=3&PT=F&X=0.3&O=0&LM=0.2
-		result += static_cast<uint8_t>(Unrandomize255State(bits.readBits(8), codewordPosition++));
+		result += narrow_cast<uint8_t>(Unrandomize255State(bits.readBits(8), codewordPosition++));
 	}
 }
 
 ZXING_EXPORT_TEST_ONLY
-DecoderResult Decode(ByteArray&& bytes, const std::string& characterSet, const bool isDMRE)
+DecoderResult Decode(ByteArray&& bytes, const bool isDMRE)
 {
 	BitSource bits(bytes);
 	Content result;
+	Error error;
 	result.symbology = {'d', '1', 3}; // ECC 200 (ISO 16022:2006 Annex N Table N.1)
-	result.hintedCharset = characterSet;
 	std::string resultTrailer;
 
 	struct StructuredAppendInfo sai;
@@ -293,7 +292,7 @@ DecoderResult Decode(ByteArray&& bytes, const std::string& characterSet, const b
 		while (!done && bits.available() >= 8) {
 			int oneByte = bits.readBits(8);
 			switch (oneByte) {
-			case 0: return DecodeStatus::FormatError;
+			case 0: throw FormatError("invalid 0 code word");
 			case 129: done = true; break; // Pad -> we are done, ignore the rest of the bits
 			case 230: DecodeC40OrTextSegment(bits, result, Mode::C40); break;
 			case 231: DecodeBase256Segment(bits, result); break;
@@ -310,13 +309,13 @@ DecoderResult Decode(ByteArray&& bytes, const std::string& characterSet, const b
 				break;
 			case 233: // Structured Append
 				if (!firstCodeword) // Must be first ISO 16022:2006 5.6.1
-					return DecodeStatus::FormatError;
+					throw FormatError("structured append tag must be first code word");
 				ParseStructuredAppend(bits, sai);
 				firstFNC1Position = 5;
 				break;
 			case 234: // Reader Programming
 				if (!firstCodeword) // Must be first ISO 16022:2006 5.2.4.9
-					return DecodeStatus::FormatError;
+					throw FormatError("reader programming tag must be first code word");
 				readerInit = true;
 				break;
 			case 235: upperShift.set = true; break; // Upper Shift (shift to Extended ASCII)
@@ -344,25 +343,23 @@ DecoderResult Decode(ByteArray&& bytes, const std::string& characterSet, const b
 					// work around encoders that use unlatch to ASCII as last code word (ask upstream)
 					if (oneByte == 254 && bits.available() == 0)
 						break;
-					return DecodeStatus::FormatError;
+					throw FormatError("invalid code word");
 				}
 			}
 			firstCodeword = false;
 		}
-	} catch (const std::exception& e) {
-#ifndef NDEBUG
-		printf("DMDecoder error: %s\n", e.what());
-#endif
-		return DecodeStatus::FormatError;
+	} catch (Error e) {
+		error = std::move(e);
 	}
 
 	result.append(resultTrailer);
-	result.applicationIndicator = result.symbology.modifier == '2' ? "GS1" : "";
+	result.symbology.aiFlag = result.symbology.modifier == '2' ? AIFlag::GS1 : AIFlag::None;
 	result.symbology.modifier += isDMRE * 6;
 
-	return DecoderResult(std::move(bytes), std::move(result))
-			.setStructuredAppend(sai)
-			.setReaderInit(readerInit);
+	return DecoderResult(std::move(result))
+		.setError(std::move(error))
+		.setStructuredAppend(sai)
+		.setReaderInit(readerInit);
 }
 
 } // namespace DecodedBitStreamParser
@@ -373,7 +370,7 @@ DecoderResult Decode(ByteArray&& bytes, const std::string& characterSet, const b
 *
 * @param codewordBytes data and error correction codewords
 * @param numDataCodewords number of codewords that are data bytes
-* @throws ChecksumException if error correction fails
+* @return false if error correction fails
 */
 static bool
 CorrectErrors(ByteArray& codewordBytes, int numDataCodewords)
@@ -392,22 +389,22 @@ CorrectErrors(ByteArray& codewordBytes, int numDataCodewords)
 	return true;
 }
 
-static DecoderResult DoDecode(const BitMatrix& bits, const std::string& characterSet)
+static DecoderResult DoDecode(const BitMatrix& bits)
 {
 	// Construct a parser and read version, error-correction level
 	const Version* version = VersionForDimensionsOf(bits);
 	if (version == nullptr)
-		return DecodeStatus::FormatError;
+		return FormatError("Invalid matrix dimension");
 
 	// Read codewords
-	ByteArray codewords = CodewordsFromBitMatrix(bits);
+	ByteArray codewords = CodewordsFromBitMatrix(bits, *version);
 	if (codewords.empty())
-		return DecodeStatus::FormatError;
+		return FormatError("Invalid number of code words");
 
 	// Separate into data blocks
 	std::vector<DataBlock> dataBlocks = GetDataBlocks(codewords, *version);
 	if (dataBlocks.empty())
-		return DecodeStatus::FormatError;
+		return FormatError("Invalid number of data blocks");
 
 	// Count total number of data bytes
 	ByteArray resultBytes(TransformReduce(dataBlocks, 0, [](const auto& db) { return db.numDataCodewords; }));
@@ -419,7 +416,7 @@ static DecoderResult DoDecode(const BitMatrix& bits, const std::string& characte
 		ByteArray& codewordBytes = dataBlock.codewords;
 		int numDataCodewords = dataBlock.numDataCodewords;
 		if (!CorrectErrors(codewordBytes, numDataCodewords))
-			return DecodeStatus::ChecksumError;
+			return ChecksumError();
 
 		for (int i = 0; i < numDataCodewords; i++) {
 			// De-interlace data blocks.
@@ -428,7 +425,7 @@ static DecoderResult DoDecode(const BitMatrix& bits, const std::string& characte
 	}
 
 	// Decode the contents of that stream of bytes
-	return DecodedBitStreamParser::Decode(std::move(resultBytes), characterSet, version->isDMRE());
+	return DecodedBitStreamParser::Decode(std::move(resultBytes), version->isDMRE());
 }
 
 static BitMatrix FlippedL(const BitMatrix& bits)
@@ -440,16 +437,16 @@ static BitMatrix FlippedL(const BitMatrix& bits)
 	return res;
 }
 
-DecoderResult Decode(const BitMatrix& bits, const std::string& characterSet)
+DecoderResult Decode(const BitMatrix& bits)
 {
-	auto res = DoDecode(bits, characterSet);
+	auto res = DoDecode(bits);
 	if (res.isValid())
 		return res;
 
 	//TODO:
 	// * unify bit mirroring helper code with QRReader?
 	// * rectangular symbols with the a size of 8 x Y are not supported a.t.m.
-	if (auto mirroredRes = DoDecode(FlippedL(bits), characterSet); mirroredRes.isValid()) {
+	if (auto mirroredRes = DoDecode(FlippedL(bits)); mirroredRes.isValid()) {
 		mirroredRes.setIsMirrored(true);
 		return mirroredRes;
 	}

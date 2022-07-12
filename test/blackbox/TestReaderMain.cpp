@@ -6,7 +6,8 @@
 
 #include "BlackboxTestRunner.h"
 #include "ImageLoader.h"
-#include "ZXContainerAlgorithms.h"
+#include "ReadBarcode.h"
+#include "ZXAlgorithms.h"
 #include "ZXFilesystem.h"
 
 #include <cstdlib>

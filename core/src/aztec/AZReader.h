@@ -8,29 +8,14 @@
 
 #include "Reader.h"
 
-#include <string>
+namespace ZXing::Aztec {
 
-namespace ZXing {
-
-class DecodeHints;
-
-namespace Aztec {
-
-/**
-* This implementation can detect and decode Aztec codes in an image.
-*
-* @author David Olivier
-*/
 class Reader : public ZXing::Reader
 {
 public:
-	explicit Reader(const DecodeHints& hints);
-	Result decode(const BinaryBitmap& image) const override;
+	using ZXing::Reader::Reader;
 
-private:
-	bool _isPure;
-	std::string _characterSet;
+	Result decode(const BinaryBitmap& image) const override;
 };
 
-} // Aztec
-} // ZXing
+} // namespace ZXing::Aztec

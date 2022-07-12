@@ -6,31 +6,19 @@
 
 #pragma once
 
-#include "BarcodeFormat.h"
-#include "DecodeHints.h"
 #include "ODRowReader.h"
 
-namespace ZXing {
-namespace OneD {
+namespace ZXing::OneD {
 
 /**
-* <p>A reader that can read all available UPC/EAN formats. If a caller wants to try to
-* read all such formats, it is most efficient to use this implementation rather than invoke
-* individual readers.</p>
-*
-* @author Sean Owen
+* @brief A reader that can read all available UPC/EAN formats.
 */
 class MultiUPCEANReader : public RowReader
 {
 public:
-	explicit MultiUPCEANReader(const DecodeHints& hints);
-	~MultiUPCEANReader() override;
+	using RowReader::RowReader;
 
 	Result decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>&) const override;
-
-private:
-	DecodeHints _hints;
 };
 
-} // OneD
-} // ZXing
+} // namespace ZXing::OneD

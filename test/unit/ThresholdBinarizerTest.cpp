@@ -13,7 +13,7 @@ using namespace ZXing;
 // Helper to parse a 0/1 string into a BitMatrix
 static BitMatrix ParseBitMatrix(const std::string& str, const int width)
 {
-	const int height = static_cast<int>(str.length() / width);
+	const int height = narrow_cast<int>(str.length() / width);
 
 	BitMatrix mat(width, height);
 	for (int y = 0; y < height; ++y) {
@@ -46,7 +46,6 @@ TEST(ThresholdBinarizerTest, PatternRowClear)
 	BitMatrix bits;
 	DecodeHints hints;
 	std::vector<uint8_t> buf;
-	Result result(DecodeStatus::NotFound);
 
 	// Test that ThresholdBinarizer::getPatternRow() clears row first (same as GlobalHistogramBinarizer)
 	// Following was failing due to OneD::DoDecode() accumulating bars in loop when using ThresholdBinarizer
@@ -98,7 +97,7 @@ TEST(ThresholdBinarizerTest, PatternRowClear)
 	hints.setFormats(BarcodeFormat::DataBarExpanded);
 	OneD::Reader reader(hints);
 
-	result = reader.decode(ThresholdBinarizer(getImageView(buf, bits), 0x7F));
+	Result result = reader.decode(ThresholdBinarizer(getImageView(buf, bits), 0x7F));
 	EXPECT_TRUE(result.isValid());
 	EXPECT_EQ(result.text(), "(91)12345678901234567890123456789012345678901234567890123456789012345678");
 }

@@ -8,22 +8,14 @@
 
 #include "ODRowReader.h"
 
-namespace ZXing {
+namespace ZXing::OneD {
 
-class DecodeHints;
-
-namespace OneD {
-
-/**
-* <p>Decodes Code 128 barcodes.</p>
-*
-* @author Sean Owen
-*/
 class Code128Reader : public RowReader
 {
 public:
+	using RowReader::RowReader;
+
 	Result decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>&) const override;
 };
 
-} // OneD
-} // ZXing
+} // namespace ZXing::OneD

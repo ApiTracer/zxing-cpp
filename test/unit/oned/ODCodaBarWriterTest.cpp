@@ -53,8 +53,9 @@ TEST(ODCodaBarWriterTest, FullCircle)
 	std::string text = "A0123456789-$:/.+A";
 	BitArray row;
 	CodabarWriter().encode(text, 0, 0).getRow(0, row);
-	Result res = CodabarReader(DecodeHints().setReturnCodabarStartEnd(true)).decodeSingleRow(0, row);
-	EXPECT_EQ(text, res.utf8());
+	auto hints = DecodeHints().setReturnCodabarStartEnd(true);
+	Result res = CodabarReader(hints).decodeSingleRow(0, row);
+	EXPECT_EQ(text, res.text());
 }
 
 TEST(ODCodaBarWriterTest, InvalidChars)

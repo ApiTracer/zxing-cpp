@@ -6,20 +6,25 @@
 #pragma once
 
 #include "ByteArray.h"
+#include "CharacterSet.h"
+
+#include <string>
+#include <vector>
 
 namespace ZXing {
 
 enum class ECI : int;
-enum class CharacterSet;
 
 enum class ContentType { Text, Binary, Mixed, GS1, ISO15434, UnknownECI };
+enum class TextMode { Utf8, Utf8ECI, HRI, Hex, Escaped };
+enum class AIFlag : char { None, GS1, AIM };
 
 std::string ToString(ContentType type);
 
 struct SymbologyIdentifier
 {
-	char code = 0, modifier = 0;
-	int eciModifierOffset = 0;
+	char code = 0, modifier = 0, eciModifierOffset = 0;
+	AIFlag aiFlag = AIFlag::None;
 
 	std::string toString(bool hasECI = false) const
 	{
@@ -44,9 +49,8 @@ public:
 
 	ByteArray bytes;
 	std::vector<Encoding> encodings;
-	std::string hintedCharset;
-	std::string applicationIndicator;
 	SymbologyIdentifier symbology;
+	CharacterSet defaultCharset = CharacterSet::Unknown;
 	bool hasECI = false;
 
 	Content();
@@ -71,9 +75,10 @@ public:
 	bool empty() const { return bytes.empty(); }
 	bool canProcess() const;
 
-	std::wstring utf16() const;
-	std::string utf8() const;
-	std::string utf8ECI() const;
+	std::string text(TextMode mode) const;
+	std::wstring utf16() const { return render(false); }
+	std::string utf8() const { return text(TextMode::Utf8); }
+
 	ByteArray bytesECI() const;
 	CharacterSet guessEncoding() const;
 	ContentType type() const;

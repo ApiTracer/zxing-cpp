@@ -7,27 +7,18 @@
 #pragma once
 
 #include "Reader.h"
-#include <string>
 
-namespace ZXing {
+namespace ZXing::DataMatrix {
 
-class DecodeHints;
-
-namespace DataMatrix {
-
-/**
-* This implementation can detect and decode Data Matrix codes in an image.
-*
-* @author bbrown@google.com (Brian Brown)
-*/
 class Reader : public ZXing::Reader
 {
-	bool _tryRotate, _tryHarder, _isPure;
-	std::string _characterSet;
 public:
-	explicit Reader(const DecodeHints& hints);
+	using ZXing::Reader::Reader;
+
 	Result decode(const BinaryBitmap& image) const override;
+#ifdef __cpp_impl_coroutine
+	Results decode(const BinaryBitmap& image, int maxSymbols) const override;
+#endif
 };
 
-} // DataMatrix
-} // ZXing
+} // namespace ZXing::DataMatrix

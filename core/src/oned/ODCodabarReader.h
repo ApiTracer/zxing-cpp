@@ -8,27 +8,14 @@
 
 #include "ODRowReader.h"
 
-namespace ZXing {
+namespace ZXing::OneD {
 
-class DecodeHints;
-
-namespace OneD {
-
-/**
-* <p>Decodes Codabar barcodes.</p>
-*
-* @author Bas Vijfwinkel
-* @author David Walker
-*/
 class CodabarReader : public RowReader
 {
 public:
-	explicit CodabarReader(const DecodeHints& hints);
-	Result decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>& state) const override;
+	using RowReader::RowReader;
 
-private:
-	bool _returnStartEnd;
+	Result decodePattern(int rowNumber, PatternView& next, std::unique_ptr<DecodingState>& state) const override;
 };
 
-} // OneD
-} // ZXing
+} // namespace ZXing::OneD

@@ -8,7 +8,7 @@
 #pragma once
 
 #include "ZXConfig.h"
-#include "ZXContainerAlgorithms.h"
+#include "ZXAlgorithms.h"
 #ifndef ZX_FAST_BIT_STORAGE
 #include "BitHacks.h"
 #endif
@@ -31,7 +31,7 @@ struct Range
 {
 	Iterator begin, end;
 	explicit operator bool() const { return begin < end; }
-	int size() const { return static_cast<int>(end - begin); }
+	int size() const { return narrow_cast<int>(end - begin); }
 };
 
 /**
@@ -89,7 +89,7 @@ public:
 
 		int operator-(const Iterator& rhs) const
 		{
-			return static_cast<int>(_value - rhs._value) * 32 + (_mask >= rhs._mask
+			return narrow_cast<int>(_value - rhs._value) * 32 + (_mask >= rhs._mask
 																	 ? +BitHacks::CountBitsSet(_mask - rhs._mask)
 																	 : -BitHacks::CountBitsSet(rhs._mask - _mask));
 		}
@@ -257,7 +257,6 @@ public:
 	* @param end end of range, exclusive
 	* @param value if true, checks that bits in range are set, otherwise checks that they are not set
 	* @return true iff all bits are set or not set in range, according to value argument
-	* @throws IllegalArgumentException if end is less than or equal to start
 	*/
 #ifdef ZX_FAST_BIT_STORAGE
 	bool isRange(int start, int end, bool value) const
@@ -273,7 +272,7 @@ public:
 	// Set allowClippedZone to false if clipping the zone at the image border is not acceptable.
 	bool hasQuietZone(Iterator i, int signedZoneSize, bool allowClippedZone = true) const
 	{
-		int index = static_cast<int>(i - begin());
+		int index = narrow_cast<int>(i - begin());
 		if (signedZoneSize > 0) {
 			if (!allowClippedZone && index + signedZoneSize >= size())
 				return false;
@@ -364,17 +363,6 @@ int ToInt(const ARRAY& a)
 	return pattern;
 }
 
-inline int ReadBits(BitArray::Range& bits, int n)
-{
-	assert(n <= 32);
-	if (n > bits.size())
-		throw std::out_of_range("ReadBits(BitArray::Range&) out of range.");
-	int res = 0;
-	for (; n > 0; --n, bits.begin++)
-		AppendBit(res, *bits.begin);
-	return res;
-}
-
 template <typename T = int, typename = std::enable_if_t<std::is_integral_v<T>>>
 T ToInt(const BitArray& bits, int pos = 0, int count = 8 * sizeof(T))
 {
@@ -402,5 +390,47 @@ std::vector<T> ToInts(const BitArray& bits, int wordSize, int totalWords, int of
 
 	return res;
 }
+
+class BitArrayView
+{
+	const BitArray& bits;
+	BitArray::Iterator cur;
+
+public:
+	BitArrayView(const BitArray& bits) : bits(bits), cur(bits.begin()) {}
+
+	BitArrayView& skipBits(int n)
+	{
+		if (n > bits.size())
+			throw std::out_of_range("BitArrayView::skipBits() out of range.");
+		cur += n;
+		return *this;
+	}
+
+	int peakBits(int n) const
+	{
+		assert(n <= 32);
+		if (n > bits.size())
+			throw std::out_of_range("BitArrayView::peakBits() out of range.");
+		int res = 0;
+		for (auto i = cur; n > 0; --n, i++)
+			AppendBit(res, *i);
+		return res;
+	}
+
+	int readBits(int n)
+	{
+		int res = peakBits(n);
+		cur += n;
+		return res;
+	}
+
+	int size() const
+	{
+		return narrow_cast<int>(bits.end() - cur);
+	}
+
+	explicit operator bool() const { return size(); }
+};
 
 } // ZXing

@@ -249,9 +249,8 @@ static void OrderByBestPatterns(const ResultPoint*& p0, const ResultPoint*& p1, 
 static DetectorResult DetectOld(const BitMatrix& image)
 {
 	ResultPoint pointA, pointB, pointC, pointD;
-	if (!DetectWhiteRect(image, pointA, pointB, pointC, pointD)) {
+	if (!DetectWhiteRect(image, pointA, pointB, pointC, pointD))
 		return {};
-	}
 
 	// Point A and D are across the diagonal from one another,
 	// as are B and C. Figure out which are the solid black lines
@@ -269,6 +268,10 @@ static DetectorResult DetectOld(const BitMatrix& image)
 	// will be the two alternating black/white sides
 	const auto& lSideOne = transitions[0];
 	const auto& lSideTwo = transitions[1];
+
+	// We accept at most 4 transisions inside the L pattern (i.e. 2 corruptions) to reduce false positive FormatErrors
+	if (lSideTwo.transitions > 2)
+		return {};
 
 	// Figure out which point is their intersection by tallying up the number of times we see the
 	// endpoints in the four endpoints. One will show up twice.
@@ -296,9 +299,8 @@ static DetectorResult DetectOld(const BitMatrix& image)
 		}
 	}
 
-	if (bottomRight == nullptr || bottomLeft == nullptr || topLeft == nullptr) {
+	if (bottomRight == nullptr || bottomLeft == nullptr || topLeft == nullptr)
 		return {};
-	}
 
 	// Bottom left is correct but top left and bottom right might be switched
 	// Use the dot product trick to sort them out
@@ -628,7 +630,7 @@ public:
 	}
 };
 
-static DetectorResult Scan(EdgeTracer startTracer, std::array<DMRegressionLine, 4>& lines)
+static DetectorResult Scan(EdgeTracer& startTracer, std::array<DMRegressionLine, 4>& lines)
 {
 	while (startTracer.step()) {
 		log(startTracer.p);
@@ -775,7 +777,7 @@ static DetectorResult Scan(EdgeTracer startTracer, std::array<DMRegressionLine, 
 	return {};
 }
 
-static DetectorResult DetectNew(const BitMatrix& image, bool tryHarder, bool tryRotate)
+static DetectorResults DetectNew(const BitMatrix& image, bool tryHarder, bool tryRotate)
 {
 #ifdef PRINT_DEBUG
 	LogMatrixWriter lmw(log, image, 1, "dm-log.pnm");
@@ -783,7 +785,9 @@ static DetectorResult DetectNew(const BitMatrix& image, bool tryHarder, bool try
 #endif
 
 	// disable expensive multi-line scan to detect off-center symbols for now
+#ifndef __cpp_impl_coroutine
 	tryHarder = false;
+#endif
 
 	// a history log to remember where the tracing already passed by to prevent a later trace from doing the same work twice
 	ByteMatrix history;
@@ -799,20 +803,25 @@ static DetectorResult DetectNew(const BitMatrix& image, bool tryHarder, bool try
 		auto center = PointF(image.width() / 2, image.height() / 2);
 		auto startPos = centered(center - center * dir + minSymbolSize / 2 * dir);
 
-		EdgeTracer tracer(image, startPos, dir);
-		if (tryHarder) {
-			tracer.history = &history;
-			history.clear();
-		}
+		history.clear();
 
 		for (int i = 1;; ++i) {
-			tracer.p = startPos + i / 2 * minSymbolSize * (i & 1 ? -1 : 1) * tracer.right();
+			EdgeTracer tracer(image, startPos, dir);
+			tracer.p += i / 2 * minSymbolSize * (i & 1 ? -1 : 1) * tracer.right();
+			if (tryHarder)
+				tracer.history = &history;
 
 			if (!tracer.isIn())
 				break;
 
+#ifdef __cpp_impl_coroutine
+			DetectorResult res;
+			while (res = Scan(tracer, lines), res.isValid())
+				co_yield std::move(res);
+#else
 			if (auto res = Scan(tracer, lines); res.isValid())
 				return res;
+#endif
 
 			if (!tryHarder)
 				break; // only test center lines
@@ -822,7 +831,9 @@ static DetectorResult DetectNew(const BitMatrix& image, bool tryHarder, bool try
 			break; // only test left direction
 	}
 
+#ifndef __cpp_impl_coroutine
 	return {};
+#endif
 }
 
 /**
@@ -865,8 +876,24 @@ static DetectorResult DetectPure(const BitMatrix& image)
 			{{left, top}, {right, top}, {right, bottom}, {left, bottom}}};
 }
 
-DetectorResult Detect(const BitMatrix& image, bool tryHarder, bool tryRotate, bool isPure)
+DetectorResults Detect(const BitMatrix& image, bool tryHarder, bool tryRotate, bool isPure)
 {
+#ifdef __cpp_impl_coroutine
+	if (isPure) {
+		co_yield DetectPure(image);
+	} else {
+		bool found = false;
+		for (auto&& r : DetectNew(image, tryHarder, tryRotate)) {
+			found = true;
+			co_yield std::move(r);
+		}
+		if (!found) {
+			auto r = DetectOld(image);
+			if (r.isValid())
+				co_yield std::move(r);
+		}
+	}
+#else
 	if (isPure)
 		return DetectPure(image);
 
@@ -874,6 +901,7 @@ DetectorResult Detect(const BitMatrix& image, bool tryHarder, bool tryRotate, bo
 	if (!result.isValid() && tryHarder)
 		result = DetectOld(image);
 	return result;
+#endif
 }
 
 } // namespace ZXing::DataMatrix

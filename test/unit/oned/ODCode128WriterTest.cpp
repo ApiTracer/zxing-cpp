@@ -6,6 +6,7 @@
 
 #include "oned/ODCode128Writer.h"
 #include "BitMatrixIO.h"
+#include "DecodeHints.h"
 #include "Result.h"
 #include "oned/ODCode128Reader.h"
 
@@ -38,7 +39,8 @@ static ZXing::Result Decode(const BitMatrix &matrix)
 {
 	BitArray row;
 	matrix.getRow(0, row);
-	return Code128Reader().decodeSingleRow(0, row);
+	DecodeHints hints;
+	return Code128Reader(hints).decodeSingleRow(0, row);
 }
 
 TEST(ODCode128Writer, EncodeWithFunc1)
@@ -96,7 +98,7 @@ TEST(ODCode128Writer, RoundtripGS1)
 
 	auto encResult = Code128Writer().encode(toEncode, 0, 0);
 	auto decResult = Decode(encResult);
-	auto actual = decResult.utf8();
+	auto actual = decResult.text();
 	EXPECT_EQ(actual, expected);
 	EXPECT_EQ(decResult.symbologyIdentifier(), "]C1");
 }
@@ -108,7 +110,7 @@ TEST(ODCode128Writer, RoundtripFNC1)
 
 	auto encResult = Code128Writer().encode(toEncode, 0, 0);
 	auto decResult = Decode(encResult);
-	auto actual = decResult.utf8();
+	auto actual = decResult.text();
 	EXPECT_EQ(actual, expected);
 	EXPECT_EQ(decResult.symbologyIdentifier(), "]C0");
 }
@@ -124,7 +126,7 @@ TEST(ODCode128Writer, EncodeSwitchCodesetFromAToB)
 	auto actual = LineMatrixToString(encoded);
 	EXPECT_EQ(actual, expected);
 
-	auto actualRoundTrip = Decode(encoded).utf8();
+	auto actualRoundTrip = Decode(encoded).text();
 	EXPECT_EQ(actualRoundTrip, toEncode);
 }
 
@@ -139,6 +141,6 @@ TEST(ODCode128Writer, EncodeSwitchCodesetFromBToA)
 	auto actual = LineMatrixToString(encoded);
 	EXPECT_EQ(actual, expected);
 
-	auto actualRoundTrip = Decode(encoded).utf8();
+	auto actualRoundTrip = Decode(encoded).text();
 	EXPECT_EQ(actualRoundTrip, toEncode);
 }
