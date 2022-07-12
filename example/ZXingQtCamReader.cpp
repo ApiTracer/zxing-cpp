@@ -22,7 +22,7 @@ int main(int argc, char *argv[])
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     engine.load(QUrl(QStringLiteral("qrc:/ZXingQt5CamReader.qml")));
 #else
-    engine.load(QUrl(QStringLiteral("qrc:/ZXingQt6CamReader.qml")));
+    engine.load(QUrl(u"qrc:/ZXingQtCamReader/ZXingQt6CamReader.qml"_qs));
 #endif
     if (engine.rootObjects().isEmpty())
         return -1;
