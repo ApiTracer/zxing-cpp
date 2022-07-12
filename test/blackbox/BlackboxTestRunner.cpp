@@ -10,7 +10,7 @@
 #include "ImageLoader.h"
 #include "ReadBarcode.h"
 #include "ThresholdBinarizer.h"
-#include "ZXContainerAlgorithms.h"
+#include "ZXAlgorithms.h"
 #include "pdf417/PDFReader.h"
 #include "qrcode/QRReader.h"
 
@@ -136,7 +136,7 @@ static std::string checkResult(const fs::path& imgPath, std::string_view expecte
 	}
 
 	if (auto expected = readFile(".txt")) {
-		auto utf8Result = result.utf8();
+		auto utf8Result = result.text();
 		return utf8Result != *expected ? fmt::format("Content mismatch: expected '{}' but got '{}'", *expected, utf8Result) : "";
 	}
 
@@ -156,7 +156,7 @@ static int totalImageLoadTime = 0;
 int timeSince(std::chrono::steady_clock::time_point startTime)
 {
 	auto duration = std::chrono::steady_clock::now() - startTime;
-	return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
+	return narrow_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
 }
 
 // pre-load images into cache, so the disc io time does not end up in the timing measurement
@@ -525,20 +525,22 @@ int runBlackBoxTests(const fs::path& testPathPrefix, const std::set<std::string>
 		});
 
 		runTests("rssexpanded-3", "DataBarExpanded", 118, {
-			{ 118, 118, 0   },
-			{ 118, 118, 180 },
-			{ 118, 0, pure },
+			// TODO: See HRIFromGS1. 13.png and 66.png are seemingly invalid symbols
+			{ 116, 116, 0   },
+			{ 116, 116, 180 },
+			{ 116, 0, pure },
 		});
 
 		runTests("rssexpandedstacked-1", "DataBarExpanded", 65, {
-			{ 60, 65, 0   },
-			{ 60, 65, 180 },
+			// TODO: See HRIFromGS1. 13.png is seemingly invalid symbol
+			{ 60, 64, 0   },
+			{ 60, 64, 180 },
 			{ 60, 0, pure },
 		});
 
-		runTests("rssexpandedstacked-2", "DataBarExpanded", 7, {
-			{ 2, 7, 0   },
-			{ 2, 7, 180 },
+		runTests("rssexpandedstacked-2", "DataBarExpanded", 2, {
+			{ 2, 2, 0   },
+			{ 2, 2, 180 },
 		});
 
 		runTests("qrcode-1", "QRCode", 16, {
@@ -598,21 +600,25 @@ int runBlackBoxTests(const fs::path& testPathPrefix, const std::set<std::string>
 		});
 
 		runTests("pdf417-1", "PDF417", 17, {
-			{ 16, 16, 0   },
-			{  1,  1, 90  },
-			{ 16, 16, 180 },
-			{  1,  1, 270 },
+			{ 16, 17, 0   },
+			{  1, 17, 90  },
+			{ 16, 17, 180 },
+			{  1, 17, 270 },
 			{ 17, 0, pure },
 		});
 
 		runTests("pdf417-2", "PDF417", 25, {
 			{ 25, 25, 0   },
+			{  0, 25, 90   },
 			{ 25, 25, 180 },
+			{  0, 25, 270   },
 		});
 
 		runTests("pdf417-3", "PDF417", 16, {
 			{ 16, 16, 0   },
+			{  0, 16, 90  },
 			{ 16, 16, 180 },
+			{  0, 16, 270 },
 			{ 7, 0, pure },
 		});
 

@@ -22,9 +22,6 @@ namespace ZXing::OneD {
 
 using namespace DataBar;
 
-DataBarReader::DataBarReader(const DecodeHints&) {}
-DataBarReader::~DataBarReader() = default;
-
 static bool IsCharacterPair(PatternView v, int modsLeft, int modsRight)
 {
 	float modSizeRef = ModSizeFinder(v);
@@ -198,7 +195,7 @@ Result DataBarReader::decodePattern(int rowNumber, PatternView& next,
 		for (const auto& rightPair : prevState->rightPairs)
 			if (ChecksumIsValid(leftPair, rightPair)) {
 				// Symbology identifier ISO/IEC 24724:2011 Section 9 and GS1 General Specifications 5.1.3 Figure 5.1.3-2
-				Result res{DecoderResult({}, Content(ByteArray(ConstructText(leftPair, rightPair)), {'e', '0'}))
+				Result res{DecoderResult(Content(ByteArray(ConstructText(leftPair, rightPair)), {'e', '0'}))
 							   .setLineCount(EstimateLineCount(leftPair, rightPair)),
 						   EstimatePosition(leftPair, rightPair), BarcodeFormat::DataBar};
 
@@ -211,7 +208,7 @@ Result DataBarReader::decodePattern(int rowNumber, PatternView& next,
 	// guaratee progress (see loop in ODReader.cpp)
 	next = {};
 
-	return Result(DecodeStatus::NotFound);
+	return {};
 }
 
 } // namespace ZXing::OneD

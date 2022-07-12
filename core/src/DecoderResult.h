@@ -8,9 +8,9 @@
 
 #include "ByteArray.h"
 #include "Content.h"
-#include "DecodeStatus.h"
+#include "Error.h"
 #include "StructuredAppend.h"
-#include "ZXContainerAlgorithms.h"
+#include "ZXAlgorithms.h"
 
 #include <memory>
 #include <string>
@@ -22,36 +22,31 @@ class CustomData;
 
 class DecoderResult
 {
-	DecodeStatus _status = DecodeStatus::NoError;
-	ByteArray _rawBytes;
 	Content _content;
-	int _numBits = 0;
 	std::string _ecLevel;
 	int _lineCount = 0;
 	StructuredAppendInfo _structuredAppend;
 	bool _isMirrored = false;
 	bool _readerInit = false;
+	Error _error;
 	std::shared_ptr<CustomData> _extra;
 
 	DecoderResult(const DecoderResult &) = delete;
 	DecoderResult& operator=(const DecoderResult &) = delete;
 
 public:
-	DecoderResult(DecodeStatus status) : _status(status) {}
-	DecoderResult(ByteArray&& rawBytes, Content&& bytes = {}) : _rawBytes(std::move(rawBytes)), _content(std::move(bytes))
-	{
-		_numBits = 8 * Size(_rawBytes);
-	}
-
 	DecoderResult() = default;
+	DecoderResult(Error error) : _error(std::move(error)) {}
+	DecoderResult(Content&& bytes) : _content(std::move(bytes)) {}
+
 	DecoderResult(DecoderResult&&) noexcept = default;
 	DecoderResult& operator=(DecoderResult&&) = default;
 
-	bool isValid() const { return StatusIsOK(_status); }
-	DecodeStatus errorCode() const { return _status; }
+	bool isValid(bool includeErrors = false) const
+	{
+		return _content.symbology.code != 0 && (!_error || includeErrors);
+	}
 
-	const ByteArray& rawBytes() const & { return _rawBytes; }
-	ByteArray&& rawBytes() && { return std::move(_rawBytes); }
 	const Content& content() const & { return _content; }
 	Content&& content() && { return std::move(_content); }
 
@@ -74,10 +69,10 @@ public:
 	DecoderResult&& SETTER(const TYPE& v) && { _##GETTER = v; return std::move(*this); } \
 	DecoderResult&& SETTER(TYPE&& v) && { _##GETTER = std::move(v); return std::move(*this); }
 
-	ZX_PROPERTY(int, numBits, setNumBits)
 	ZX_PROPERTY(std::string, ecLevel, setEcLevel)
 	ZX_PROPERTY(int, lineCount, setLineCount)
 	ZX_PROPERTY(StructuredAppendInfo, structuredAppend, setStructuredAppend)
+	ZX_PROPERTY(Error, error, setError)
 	ZX_PROPERTY(bool, isMirrored, setIsMirrored)
 	ZX_PROPERTY(bool, readerInit, setReaderInit)
 	ZX_PROPERTY(std::shared_ptr<CustomData>, extra, setExtra)

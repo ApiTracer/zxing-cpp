@@ -5,8 +5,6 @@
 
 #pragma once
 
-#define ZX_USE_UTF8 1 // see Result.h
-
 #include "ReadBarcode.h"
 
 #include <opencv2/opencv.hpp>
@@ -28,9 +26,9 @@ inline ZXing::ImageView ImageViewFromMat(const cv::Mat& image)
 	return {image.data, image.cols, image.rows, fmt};
 }
 
-inline ZXing::Result ReadBarcode(const cv::Mat& image, const ZXing::DecodeHints& hints = {})
+inline ZXing::Results ReadBarcodes(const cv::Mat& image, const ZXing::DecodeHints& hints = {})
 {
-	return ZXing::ReadBarcode(ImageViewFromMat(image), hints);
+	return ZXing::ReadBarcodes(ImageViewFromMat(image), hints);
 }
 
 inline void DrawResult(cv::Mat& img, ZXing::Result res)
@@ -42,5 +40,5 @@ inline void DrawResult(cv::Mat& img, ZXing::Result res)
 	int npts = contour.size();
 
 	cv::polylines(img, &pts, &npts, 1, true, CV_RGB(0, 255, 0));
-	cv::putText(img, res.text(), cv::Point(10, 20), cv::FONT_HERSHEY_DUPLEX, 0.5, CV_RGB(0, 255, 0));
+	cv::putText(img, res.text(), zx2cv(pos[3]) + cv::Point(0, 20), cv::FONT_HERSHEY_DUPLEX, 0.5, CV_RGB(0, 255, 0));
 }

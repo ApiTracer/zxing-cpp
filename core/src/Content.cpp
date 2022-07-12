@@ -7,9 +7,10 @@
 
 #include "CharacterSet.h"
 #include "ECI.h"
+#include "GS1.h"
 #include "TextDecoder.h"
 #include "TextUtfEncoding.h"
-#include "ZXContainerAlgorithms.h"
+#include "ZXAlgorithms.h"
 
 namespace ZXing {
 
@@ -50,9 +51,7 @@ void Content::switchEncoding(ECI eci, bool isECI)
 
 Content::Content() {}
 
-Content::Content(ByteArray&& bytes, SymbologyIdentifier si, std::string ai)
-	: bytes(std::move(bytes)), applicationIndicator(std::move(ai)), symbology(si)
-{}
+Content::Content(ByteArray&& bytes, SymbologyIdentifier si) : bytes(std::move(bytes)), symbology(si) {}
 
 void Content::switchEncoding(CharacterSet cs)
 {
@@ -101,7 +100,7 @@ std::wstring Content::render(bool withECI) const
 	if (withECI)
 		res = TextDecoder::FromLatin1(symbology.toString(true));
 	ECI lastECI = ECI::Unknown;
-	auto fallbackCS = CharacterSetFromString(defaultCharset);
+	auto fallbackCS = defaultCharset;
 	if (!hasECI && fallbackCS == CharacterSet::Unknown)
 		fallbackCS = guessEncoding();
 
@@ -137,19 +136,23 @@ std::wstring Content::render(bool withECI) const
 	return res;
 }
 
-std::wstring Content::utf16() const
+std::string Content::text(TextMode mode) const
 {
-	return render(false);
-}
+	switch(mode) {
+	case TextMode::Utf8: return TextUtfEncoding::ToUtf8(render(false));
+	case TextMode::Utf8ECI: return TextUtfEncoding::ToUtf8(render(true));
+	case TextMode::HRI:
+		if (symbology.aiFlag == AIFlag::GS1)
+			return HRIFromGS1(text(TextMode::Utf8));
+		else if (type() == ContentType::Text)
+			return text(TextMode::Utf8);
+		else
+			return text(TextMode::Escaped);
+	case TextMode::Hex: return ToHex(bytes);
+	case TextMode::Escaped: return TextUtfEncoding::ToUtf8(render(false), true);
+	}
 
-std::string Content::utf8() const
-{
-	return TextUtfEncoding::ToUtf8(render(false));
-}
-
-std::string Content::utf8ECI() const
-{
-	return TextUtfEncoding::ToUtf8(render(true));
+	return {}; // silence compiler warning
 }
 
 ByteArray Content::bytesECI() const
@@ -197,7 +200,7 @@ ContentType Content::type() const
 	if (!canProcess())
 		return ContentType::UnknownECI;
 
-	if (applicationIndicator == "GS1")
+	if (symbology.aiFlag == AIFlag::GS1)
 		return ContentType::GS1;
 
 	// check for the absolut minimum of a ISO 15434 conforming message ("[)>" + RS + digit + digit)

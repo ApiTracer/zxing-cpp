@@ -9,7 +9,6 @@
 #include "ByteArray.h"
 #include "CharacterSet.h"
 #include "DecoderResult.h"
-#include "DecodeStatus.h"
 #include "GenericGF.h"
 #include "MCBitMatrixParser.h"
 #include "ReedSolomonDecoder.h"
@@ -52,7 +51,7 @@ static bool CorrectErrors(ByteArray& codewordBytes, int start, int dataCodewords
 	// We don't care about errors in the error-correction codewords
 	for (int i = 0; i < dataCodewords; i++) {
 		if ((mode == ALL) || (i % 2 == (mode - 1)))
-			codewordBytes[i + start] = static_cast<uint8_t>(codewordsInts[i / divisor]);
+			codewordBytes[i + start] = narrow_cast<uint8_t>(codewordsInts[i / divisor]);
 	}
 
 	return true;
@@ -271,7 +270,7 @@ DecoderResult Decode(ByteArray&& bytes, const int mode)
 {
 	Content result;
 	result.symbology = {'U', (mode == 2 || mode == 3) ? '1' : '0', 2}; // TODO: No identifier defined for mode 6?
-	result.defaultCharset = "ISO8859_1";
+	result.defaultCharset = CharacterSet::ISO8859_1;
 	StructuredAppendInfo sai;
 
 	switch (mode) {
@@ -292,7 +291,7 @@ DecoderResult Decode(ByteArray&& bytes, const int mode)
 	case 5: GetMessage(bytes, 1, 77, result, sai); break;
 	}
 
-	return DecoderResult(std::move(bytes), std::move(result))
+	return DecoderResult(std::move(result))
 		.setEcLevel(std::to_string(mode))
 		.setStructuredAppend(sai)
 		.setReaderInit(mode == 6);
@@ -305,7 +304,7 @@ DecoderResult Decode(const BitMatrix& bits)
 	ByteArray codewords = BitMatrixParser::ReadCodewords(bits);
 
 	if (!CorrectErrors(codewords, 0, 10, 10, ALL))
-		return DecodeStatus::ChecksumError;
+		return ChecksumError();
 
 	int mode = codewords[0] & 0x0F;
 	ByteArray datawords;
@@ -317,15 +316,15 @@ DecoderResult Decode(const BitMatrix& bits)
 		if (CorrectErrors(codewords, 20, 84, 40, EVEN) && CorrectErrors(codewords, 20, 84, 40, ODD))
 			datawords.resize(94, 0);
 		else
-			return DecodeStatus::ChecksumError;
+			return ChecksumError();
 		break;
 	case 5: // Full ECC
 		if (CorrectErrors(codewords, 20, 68, 56, EVEN) && CorrectErrors(codewords, 20, 68, 56, ODD))
 			datawords.resize(78, 0);
 		else
-			return DecodeStatus::ChecksumError;
+			return ChecksumError();
 		break;
-	default: return DecodeStatus::FormatError;
+	default: return FormatError("Invalid mode");
 	}
 
 	std::copy_n(codewords.begin(), 10, datawords.begin());

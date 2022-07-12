@@ -14,6 +14,7 @@
 #include "ReedSolomonDecoder.h"
 #include "ResultPoint.h"
 #include "WhiteRectDetector.h"
+#include "ZXAlgorithms.h"
 
 #include <array>
 #include <utility>
@@ -23,7 +24,7 @@ namespace ZXing::Aztec {
 template <typename T, typename = typename std::enable_if<std::is_floating_point<T>::value>::type>
 static int RoundToNearest(T x)
 {
-	return static_cast<int>(std::lround(x));
+	return narrow_cast<int>(std::lround(x));
 }
 
 static const int EXPECTED_CORNER_BITS[] = {
@@ -496,23 +497,19 @@ DetectorResult Detect(const BitMatrix& image, bool isMirror, bool isPure)
 	std::array<ResultPoint, 4> bullsEyeCorners;
 	bool compact = false;
 	int nbCenterLayers = 0;
-	if (!GetBullsEyeCorners(image, pCenter, bullsEyeCorners, compact, nbCenterLayers)) {
+	if (!GetBullsEyeCorners(image, pCenter, bullsEyeCorners, compact, nbCenterLayers))
 		return {};
-	}
 
-	if (isMirror) {
+	if (isMirror)
 		std::swap(bullsEyeCorners[0], bullsEyeCorners[2]);
-	}
 
 	// 3. Get the size of the matrix and other parameters from the bull's eye
 	int nbLayers = 0;
 	int nbDataBlocks = 0;
 	bool readerInit = false;
 	int shift = 0;
-	if (!ExtractParameters(image, bullsEyeCorners, compact, nbCenterLayers, nbLayers, nbDataBlocks, readerInit,
-						   shift)) {
+	if (!ExtractParameters(image, bullsEyeCorners, compact, nbCenterLayers, nbLayers, nbDataBlocks, readerInit, shift))
 		return {};
-	}
 
 	// 4. Sample the grid
 	return {SampleGrid(image, bullsEyeCorners[(shift + 0) % 4], bullsEyeCorners[(shift + 1) % 4],

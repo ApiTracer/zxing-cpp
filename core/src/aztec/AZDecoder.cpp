@@ -11,7 +11,6 @@
 #include "BitArray.h"
 #include "BitMatrix.h"
 #include "CharacterSet.h"
-#include "DecodeStatus.h"
 #include "DecoderResult.h"
 #include "GenericGF.h"
 #include "ReedSolomonDecoder.h"
@@ -143,12 +142,12 @@ static BitArray CorrectBits(const DetectorResult& ddata, const BitArray& rawbits
 	int numECCodewords = numCodewords - numDataCodewords;
 
 	if (numCodewords < numDataCodewords)
-		return {};
+		throw FormatError("Invalid number of code words");
 
 	auto dataWords = ToInts<int>(rawbits, codewordSize, numCodewords, Size(rawbits) % codewordSize);
 
 	if (!ReedSolomonDecode(*gf, dataWords, numECCodewords))
-		return {};
+		throw ChecksumError();
 
 	// drop the ECCodewords from the dataWords array
 	dataWords.resize(numDataCodewords);
@@ -209,11 +208,11 @@ static const char* GetCharacter(Table table, int code)
 /**
 * See ISO/IEC 24778:2008 Section 10.1
 */
-static ECI ParseECIValue(BitArray::Range& bits, const int flg)
+static ECI ParseECIValue(BitArrayView& bits, const int flg)
 {
 	int eci = 0;
 	for (int i = 0; i < flg; i++)
-		eci = 10 * eci + ReadBits(bits, 4) - 2;
+		eci = 10 * eci + bits.readBits(4) - 2;
 	return ECI(eci);
 }
 
@@ -254,20 +253,20 @@ static void DecodeContent(const BitArray& bits, Content& res)
 	Table latchTable = Table::UPPER; // table most recently latched to
 	Table shiftTable = Table::UPPER; // table to use for the next read
 
-	auto remBits = bits.range();
+	auto remBits = BitArrayView(bits);
 
 	while (remBits.size() >= (shiftTable == Table::DIGIT ? 4 : 5)) { // see ISO/IEC 24778:2008 7.3.1.2 regarding padding bits
 		if (shiftTable == Table::BINARY) {
-			int length = ReadBits(remBits, 5);
+			int length = remBits.readBits(5);
 			if (length == 0)
-				length = ReadBits(remBits, 11) + 31;
+				length = remBits.readBits(11) + 31;
 			for (int i = 0; i < length; i++)
-				res.push_back(ReadBits(remBits, 8));
+				res.push_back(remBits.readBits(8));
 			// Go back to whatever mode we had been in
 			shiftTable = latchTable;
 		} else {
 			int size = shiftTable == Table::DIGIT ? 4 : 5;
-			int code = ReadBits(remBits, size);
+			int code = remBits.readBits(size);
 			const char* str = GetCharacter(shiftTable, code);
 			if (std::strncmp(str, "CTRL_", 5) == 0) {
 				// Table changes
@@ -279,7 +278,7 @@ static void DecodeContent(const BitArray& bits, Content& res)
 				if (str[6] == 'L')
 					latchTable = shiftTable;
 			} else if (std::strcmp(str, "FLGN") == 0) {
-				int flg = ReadBits(remBits, 3);
+				int flg = remBits.readBits(3);
 				if (flg == 0) { // FNC1
 					res.push_back(29); // May be removed at end if first/second FNC1
 				} else if (flg <= 6) {
@@ -306,12 +305,12 @@ DecoderResult Decode(const BitArray& bits)
 
 	try {
 		DecodeContent(bits, res);
-	} catch (const std::out_of_range&) { // see ReadBits()
-		return DecodeStatus::FormatError;
+	} catch (const std::exception&) { // see BitArrayView::readBits
+		return FormatError();
 	}
 
 	if (res.bytes.empty())
-		return DecodeStatus::FormatError;
+		return FormatError("Empty symbol content");
 
 	// Check for Structured Append - need 4 5-bit words, beginning with ML UL, ending with index and count
 	bool haveStructuredAppend = Size(bits) > 20 && ToInt(bits, 0, 5) == 29 // latch to MIXED (from UPPER)
@@ -323,19 +322,18 @@ DecoderResult Decode(const BitArray& bits)
 	// modifiers that indicate ECI protocol (ISO/IEC 24778:2008 Annex F Table F.1)
 	if (res.bytes[0] == 29) {
 		res.symbology.modifier = '1'; // GS1
-		res.applicationIndicator = "GS1";
+		res.symbology.aiFlag = AIFlag::GS1;
 		res.erase(0, 1); // Remove FNC1
 	} else if (res.bytes.size() > 2 && std::isupper(res.bytes[0]) && res.bytes[1] == 29) {
 		// FNC1 following single uppercase letter (the AIM Application Indicator)
 		res.symbology.modifier = '2'; // AIM
-		// TODO: remove the AI from the content?
-		res.applicationIndicator = res.bytes.asString(0, 1);
+		res.symbology.aiFlag = AIFlag::AIM;
 		res.erase(1, 1); // Remove FNC1,
 						 // The AIM Application Indicator character "A"-"Z" is left in the stream (ISO/IEC 24778:2008 16.2)
 	} else if (res.bytes.size() > 3 && std::isdigit(res.bytes[0]) && std::isdigit(res.bytes[1]) && res.bytes[2] == 29) {
 		// FNC1 following 2 digits (the AIM Application Indicator)
 		res.symbology.modifier = '2'; // AIM
-		res.applicationIndicator = res.bytes.asString(0, 2);
+		res.symbology.aiFlag = AIFlag::AIM;
 		res.erase(2, 1); // Remove FNC1
 						 // The AIM Application Indicator characters "00"-"99" are left in the stream (ISO/IEC 24778:2008 16.2)
 	}
@@ -343,17 +341,17 @@ DecoderResult Decode(const BitArray& bits)
 	if (sai.index != -1)
 		res.symbology.modifier += 6; // TODO: this is wrong as long as we remove the sai info from the content in ParseStructuredAppend
 
-	return DecoderResult(bits.toBytes(), std::move(res)).setNumBits(Size(bits)).setStructuredAppend(sai);
+	return DecoderResult(std::move(res)).setStructuredAppend(sai);
 }
 
 DecoderResult Decode(const DetectorResult& detectorResult)
 {
-	BitArray bits = CorrectBits(detectorResult, ExtractBits(detectorResult));
-
-	if (!bits.size())
-		return DecodeStatus::FormatError;
-
-	return Decode(bits).setReaderInit(detectorResult.readerInit());
+	try {
+		auto bits = CorrectBits(detectorResult, ExtractBits(detectorResult));
+		return Decode(bits).setReaderInit(detectorResult.readerInit());
+	} catch (Error e) {
+		return e;
+	}
 }
 
 } // namespace ZXing::Aztec
